@@ -1,19 +1,14 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useCallback } from "react";
-import maplibregl, {
-  LngLatBoundsLike,
-  Map,
-  Popup,
-  CirclePaint,
-  Expression,
-} from "maplibre-gl";
+import { useEffect, useMemo, useRef, useState } from "react";
+import maplibregl, { LngLatBoundsLike, Map, Popup } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 
 const DATA_POINTS = "/data/au_plumes_clustered.geojson";
 const DATA_CLUSTERS = "/data/clusters_au.geojson";
 
-// Rough Australia bounds
+// Australia bounds
 const AUS_BOUNDS: LngLatBoundsLike = [112, -44, 154, -9];
 
 type Provider = "SRON" | "KAYRROS";
@@ -30,23 +25,18 @@ export default function MapView() {
   const [showPolys, setShowPolys] = useState(true);
   const [showPoints, setShowPoints] = useState(true);
 
-  /** Circle paint (memoized so hooks deps are stable) */
-  const paintCircle: CirclePaint = useMemo(
+  // Paint for circles (memoized)
+  const paintCircle: any = useMemo(
     () => ({
       "circle-radius": [
         "interpolate",
         ["linear"],
         ["zoom"],
-        4,
-        2,
-        6,
-        3,
-        8,
-        5,
-        10,
-        7,
-        12,
-        9,
+        4, 2,
+        6, 3,
+        8, 5,
+        10, 7,
+        12, 9,
       ],
       "circle-color": [
         "case",
@@ -55,54 +45,51 @@ export default function MapView() {
         [
           "match",
           ["%", ["abs", ["get", "cluster_id"]], 8],
-          0,
-          "#4c9cff",
-          1,
-          "#00e6a8",
-          2,
-          "#f97d61",
-          3,
-          "#e6c229",
-          4,
-          "#ad73ff",
-          5,
-          "#56d2ef",
-          6,
-          "#ff70c2",
-          7,
-          "#87f26e",
+          0, "#4c9cff",
+          1, "#00e6a8",
+          2, "#f97d61",
+          3, "#e6c229",
+          4, "#ad73ff",
+          5, "#56d2ef",
+          6, "#ff70c2",
+          7, "#87f26e",
           "#4c9cff",
         ],
       ],
-      "circle-opacity": ["case", ["<", ["get", "cluster_id"], 0], 0.35, 0.9],
+      "circle-opacity": [
+        "case",
+        ["<", ["get", "cluster_id"], 0],
+        0.35,
+        0.9,
+      ],
       "circle-stroke-color": "#0b0b0e",
       "circle-stroke-width": 0.5,
     }),
     []
   );
 
-  /** Build a MapLibre filter expression based on UI state */
-  const filterExpression: Expression = useMemo(() => {
+  // Build a filter expression from UI state (memoized)
+  const filterExpression: any = useMemo(() => {
     const enabledProviders = (Object.keys(providers) as Provider[]).filter(
       (k) => providers[k]
     );
 
-    const providerFilter: Expression =
+    const providerFilter =
       enabledProviders.length === 0
-        ? (["in", ["get", "provider"], "___none___"] as unknown as Expression) // match nothing
-        : (["in", ["get", "provider"], ["literal", enabledProviders]] as unknown as Expression);
+        ? ["in", ["get", "provider"], "___none___"] // match nothing
+        : ["in", ["get", "provider"], ["literal", enabledProviders]];
 
-    const emissionFilter: Expression = [
+    const emissionFilter = [
       ">=",
       ["coalesce", ["get", "emission_tph"], 0],
       minEmission,
-    ] as unknown as Expression;
+    ];
 
-    return ["all", providerFilter, emissionFilter] as unknown as Expression;
+    return ["all", providerFilter, emissionFilter];
   }, [providers, minEmission]);
 
-  /** Popup HTML formatter */
-  const makePopupHTML = useCallback((p: Record<string, unknown>, lng: number, lat: number) => {
+  // Helper for popup HTML
+  const makePopupHTML = (p: Record<string, unknown>, lng: number, lat: number) => {
     const fmt = (v: unknown) =>
       v === null || v === undefined || v === "" ? "—" : String(v);
     return `
@@ -120,9 +107,9 @@ export default function MapView() {
       5
     )}]</div>
       </div>`;
-  }, []);
+  };
 
-  /** Initialize map once */
+  // Initialize map once
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
 
@@ -156,7 +143,7 @@ export default function MapView() {
       map.addSource("plumes", { type: "geojson", data: DATA_POINTS });
       map.addSource("clusters", { type: "geojson", data: DATA_CLUSTERS });
 
-      // 1) Cluster polygons (FILL) — bottom-most
+      // 1) Cluster polygons (FILL) — bottom
       map.addLayer({
         id: "cluster-fill",
         type: "fill",
@@ -165,7 +152,7 @@ export default function MapView() {
           "fill-color": "#00e6a8",
           "fill-opacity": 0.15,
         },
-        layout: { visibility: showPolys ? "visible" : "none" },
+        layout: { visibility: "visible" },
       });
 
       // 2) Cluster polygons (OUTLINE)
@@ -178,25 +165,24 @@ export default function MapView() {
           "line-width": 1.2,
           "line-opacity": 0.85,
         },
-        layout: { visibility: showPolys ? "visible" : "none" },
+        layout: { visibility: "visible" },
       });
 
-      // 3) Points — added last so they render above polygons
+      // 3) Points — top
       map.addLayer({
         id: "plumes-circles",
         type: "circle",
         source: "plumes",
         paint: paintCircle,
-        layout: { visibility: showPoints ? "visible" : "none" },
+        layout: { visibility: "visible" },
         filter: filterExpression,
       });
 
-      // Popup on points only
+      // Popups for points only
       const popup = new Popup({ closeButton: true, closeOnClick: true, maxWidth: "320px" });
       map.on("click", "plumes-circles", (e) => {
         const f = e.features?.[0];
         if (!f) return;
-        // GeoJSON feature properties are untyped; treat as generic dict
         const p = (f.properties ?? {}) as Record<string, unknown>;
         popup
           .setLngLat(e.lngLat)
@@ -213,17 +199,17 @@ export default function MapView() {
       mapRef.current?.remove();
       mapRef.current = null;
     };
-    // We intentionally initialize once; dynamic updates happen in the effect below.
+    // initialize once; dynamic updates handled below
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); 
+  }, []);
 
-  /** React to UI changes → update filters/visibility */
+  // React to UI changes → update filters/visibility
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
 
     if (map.getLayer("plumes-circles")) {
-      map.setFilter("plumes-circles", filterExpression);
+      map.setFilter("plumes-circles", filterExpression as any);
       map.setLayoutProperty("plumes-circles", "visibility", showPoints ? "visible" : "none");
     }
     if (map.getLayer("cluster-fill")) {
