@@ -1,0 +1,55 @@
+@import "tailwindcss";
+
+/* === Root theme variables === */
+:root {
+  --background: #0b0b0e;
+  /* dark background by default */
+  --foreground: #e9e9ef;
+  /* light foreground text */
+  --accent: #00e6a8;
+  /* neon accent */
+  --muted: #2c2c33;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif);
+  --font-mono: var(--font-geist-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+}
+
+/* Light mode override */
+@media (prefers-color-scheme: light) {
+  :root {
+    --background: #ffffff;
+    --foreground: #171717;
+    --muted: #d1d5db;
+  }
+}
+
+/* === Base styles === */
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* === MapLibre popup === */
+.maplibregl-popup-content {
+  background: var(--background) !important;
+  color: var(--foreground) !important;
+  border-radius: 8px !important;
+  border: 1px solid var(--muted) !important;
+  font-family: var(--font-sans);
+  font-size: 13px !important;
+  line-height: 1.4 !important;
+  padding: 8px 10px !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.6) !important;
+}
+
+.maplibregl-popup-tip {
+  border-top-color: var(--background) !important;
+  border-bottom-color: var(--background) !important;
+}
