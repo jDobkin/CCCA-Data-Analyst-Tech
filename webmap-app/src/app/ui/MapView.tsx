@@ -1,7 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import maplibregl, { LngLatBoundsLike, Map, Popup } from "maplibre-gl";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import maplibregl, {
+  LngLatBoundsLike,
+  Map,
+  Popup,
+  CirclePaint,
+  Expression,
+} from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 
 const DATA_POINTS = "/data/au_plumes_clustered.geojson";
@@ -24,77 +30,99 @@ export default function MapView() {
   const [showPolys, setShowPolys] = useState(true);
   const [showPoints, setShowPoints] = useState(true);
 
-  // Build MapLibre filter expression based on current UI state
-  const buildFilter = () => {
+  /** Circle paint (memoized so hooks deps are stable) */
+  const paintCircle: CirclePaint = useMemo(
+    () => ({
+      "circle-radius": [
+        "interpolate",
+        ["linear"],
+        ["zoom"],
+        4,
+        2,
+        6,
+        3,
+        8,
+        5,
+        10,
+        7,
+        12,
+        9,
+      ],
+      "circle-color": [
+        "case",
+        ["<", ["get", "cluster_id"], 0],
+        "#8a8fa3", // noise
+        [
+          "match",
+          ["%", ["abs", ["get", "cluster_id"]], 8],
+          0,
+          "#4c9cff",
+          1,
+          "#00e6a8",
+          2,
+          "#f97d61",
+          3,
+          "#e6c229",
+          4,
+          "#ad73ff",
+          5,
+          "#56d2ef",
+          6,
+          "#ff70c2",
+          7,
+          "#87f26e",
+          "#4c9cff",
+        ],
+      ],
+      "circle-opacity": ["case", ["<", ["get", "cluster_id"], 0], 0.35, 0.9],
+      "circle-stroke-color": "#0b0b0e",
+      "circle-stroke-width": 0.5,
+    }),
+    []
+  );
+
+  /** Build a MapLibre filter expression based on UI state */
+  const filterExpression: Expression = useMemo(() => {
     const enabledProviders = (Object.keys(providers) as Provider[]).filter(
       (k) => providers[k]
     );
 
-    const providerFilter =
+    const providerFilter: Expression =
       enabledProviders.length === 0
-        ? ["in", ["get", "provider"], "___none___"] // match nothing
-        : ["in", ["get", "provider"], ["literal", enabledProviders]];
+        ? (["in", ["get", "provider"], "___none___"] as unknown as Expression) // match nothing
+        : (["in", ["get", "provider"], ["literal", enabledProviders]] as unknown as Expression);
 
-    const emissionFilter = [">=", ["coalesce", ["get", "emission_tph"], 0], minEmission];
+    const emissionFilter: Expression = [
+      ">=",
+      ["coalesce", ["get", "emission_tph"], 0],
+      minEmission,
+    ] as unknown as Expression;
 
-    // Cluster id filter stays in the paint, not here. This is general data filter.
-    return ["all", providerFilter, emissionFilter];
-  };
+    return ["all", providerFilter, emissionFilter] as unknown as Expression;
+  }, [providers, minEmission]);
 
-  // Styling for points (clusters colored; noise grey)
-  const paintCircle: maplibregl.CirclePaint = {
-    "circle-radius": [
-      "interpolate",
-      ["linear"],
-      ["zoom"],
-      4,
-      2,
-      6,
-      3,
-      8,
-      5,
-      10,
-      7,
-      12,
-      9,
-    ],
-    "circle-color": [
-      "case",
-      ["<", ["get", "cluster_id"], 0],
-      "#8a8fa3", // noise
-      // colorful ramp for clusters
-      [
-        "match",
-        ["%", ["abs", ["get", "cluster_id"]], 8],
-        0,
-        "#4c9cff",
-        1,
-        "#00e6a8",
-        2,
-        "#f97d61",
-        3,
-        "#e6c229",
-        4,
-        "#ad73ff",
-        5,
-        "#56d2ef",
-        6,
-        "#ff70c2",
-        7,
-        "#87f26e",
-        "#4c9cff",
-      ],
-    ],
-    "circle-opacity": [
-      "case",
-      ["<", ["get", "cluster_id"], 0],
-      0.35, // noise
-      0.9, // clusters
-    ],
-    "circle-stroke-color": "#0b0b0e",
-    "circle-stroke-width": 0.5,
-  };
+  /** Popup HTML formatter */
+  const makePopupHTML = useCallback((p: Record<string, unknown>, lng: number, lat: number) => {
+    const fmt = (v: unknown) =>
+      v === null || v === undefined || v === "" ? "—" : String(v);
+    return `
+      <div style="background:#1e1e24;color:#e9e9ef;border-radius:8px;border:1px solid #2c2c33;padding:8px 10px;font:13px/1.4 -apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial;">
+        <div style="font-weight:600;margin-bottom:4px;">${fmt(p.provider)} · Cluster ${fmt(
+      p.cluster_id
+    )}</div>
+        <div><b>Datetime (UTC):</b> ${fmt(p.obs_datetime_utc)}</div>
+        <div><b>Emission (t/h):</b> ${fmt(
+          p.emission_tph
+        )} <span style="opacity:.75">± ${fmt(p.emission_unc_tph)}</span></div>
+        <div><b>Sector:</b> ${fmt((p as { sector?: unknown }).sector)}</div>
+        <div><b>Plume ID:</b> ${fmt(p.plume_id_src)}</div>
+        <div style="opacity:.8;margin-top:4px;">[${lng.toFixed(5)}, ${lat.toFixed(
+      5
+    )}]</div>
+      </div>`;
+  }, []);
 
+  /** Initialize map once */
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
 
@@ -113,7 +141,6 @@ export default function MapView() {
         },
         layers: [{ id: "osm", type: "raster", source: "osm" }],
         glyphs: "https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf",
-        // sprite: (omit entirely unless you provide a valid URL)
       },
       center: [134, -25],
       zoom: 3.5,
@@ -124,24 +151,24 @@ export default function MapView() {
     map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), "top-right");
     map.fitBounds(AUS_BOUNDS, { padding: 40 });
 
-    map.on("load", async () => {
-      // --- Sources
+    map.on("load", () => {
+      // Sources
       map.addSource("plumes", { type: "geojson", data: DATA_POINTS });
       map.addSource("clusters", { type: "geojson", data: DATA_CLUSTERS });
 
-      // --- 1) Cluster polygons (FILL) — bottom-most
+      // 1) Cluster polygons (FILL) — bottom-most
       map.addLayer({
         id: "cluster-fill",
         type: "fill",
         source: "clusters",
         paint: {
           "fill-color": "#00e6a8",
-          "fill-opacity": 0.15, // shaded
+          "fill-opacity": 0.15,
         },
         layout: { visibility: showPolys ? "visible" : "none" },
       });
 
-      // --- 2) Cluster polygons (OUTLINE)
+      // 2) Cluster polygons (OUTLINE)
       map.addLayer({
         id: "cluster-outline",
         type: "line",
@@ -154,37 +181,29 @@ export default function MapView() {
         layout: { visibility: showPolys ? "visible" : "none" },
       });
 
-      // --- 3) Points — added last so they render above polygons
+      // 3) Points — added last so they render above polygons
       map.addLayer({
         id: "plumes-circles",
         type: "circle",
         source: "plumes",
         paint: paintCircle,
         layout: { visibility: showPoints ? "visible" : "none" },
-        filter: buildFilter() as any,
+        filter: filterExpression,
       });
 
-      // --- Popup (points only)
+      // Popup on points only
       const popup = new Popup({ closeButton: true, closeOnClick: true, maxWidth: "320px" });
       map.on("click", "plumes-circles", (e) => {
         const f = e.features?.[0];
         if (!f) return;
-        const p = f.properties || {};
-        const fmt = (v: any) => (v === null || v === undefined || v === "" ? "—" : String(v));
-
-        const html = `
-          <div style="font: 12px/1.4 -apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial;">
-            <div style="font-weight:600;margin-bottom:4px;">${fmt(p.provider)} · Cluster ${fmt(p.cluster_id)}</div>
-            <div><b>Datetime (UTC):</b> ${fmt(p.obs_datetime_utc)}</div>
-            <div><b>Emission (t/h):</b> ${fmt(p.emission_tph)} <span style="opacity:.75">± ${fmt(p.emission_unc_tph)}</span></div>
-            <div><b>Sector:</b> ${fmt(p.sector)}</div>
-            <div><b>Plume ID:</b> ${fmt(p.plume_id_src)}</div>
-            <div style="opacity:.8;margin-top:4px;">[${(e.lngLat.lng).toFixed(5)}, ${(e.lngLat.lat).toFixed(5)}]</div>
-          </div>`;
-        popup.setLngLat(e.lngLat).setHTML(html).addTo(map);
+        // GeoJSON feature properties are untyped; treat as generic dict
+        const p = (f.properties ?? {}) as Record<string, unknown>;
+        popup
+          .setLngLat(e.lngLat)
+          .setHTML(makePopupHTML(p, e.lngLat.lng, e.lngLat.lat))
+          .addTo(map);
       });
 
-      // Pointer cursor on points
       map.on("mouseenter", "plumes-circles", () => (map.getCanvas().style.cursor = "pointer"));
       map.on("mouseleave", "plumes-circles", () => (map.getCanvas().style.cursor = ""));
     });
@@ -194,15 +213,17 @@ export default function MapView() {
       mapRef.current?.remove();
       mapRef.current = null;
     };
-  }, []);
+    // We intentionally initialize once; dynamic updates happen in the effect below.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); 
 
-  // React to UI changes → update filters/visibility
+  /** React to UI changes → update filters/visibility */
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
 
     if (map.getLayer("plumes-circles")) {
-      map.setFilter("plumes-circles", buildFilter() as any);
+      map.setFilter("plumes-circles", filterExpression);
       map.setLayoutProperty("plumes-circles", "visibility", showPoints ? "visible" : "none");
     }
     if (map.getLayer("cluster-fill")) {
@@ -211,7 +232,7 @@ export default function MapView() {
     if (map.getLayer("cluster-outline")) {
       map.setLayoutProperty("cluster-outline", "visibility", showPolys ? "visible" : "none");
     }
-  }, [minEmission, providers, showPolys, showPoints]);
+  }, [filterExpression, showPoints, showPolys]);
 
   return (
     <div>
@@ -234,19 +255,11 @@ export default function MapView() {
           <span className="opacity-85">SRON</span>
         </label>
         <label className="flex items-center gap-2">
-          <input
-            type="checkbox"
-            checked={showPoints}
-            onChange={() => setShowPoints((v) => !v)}
-          />
+          <input type="checkbox" checked={showPoints} onChange={() => setShowPoints((v) => !v)} />
           <span className="opacity-85">Points</span>
         </label>
         <label className="flex items-center gap-2">
-          <input
-            type="checkbox"
-            checked={showPolys}
-            onChange={() => setShowPolys((v) => !v)}
-          />
+          <input type="checkbox" checked={showPolys} onChange={() => setShowPolys((v) => !v)} />
           <span className="opacity-85">Cluster hulls</span>
         </label>
         <div className="flex items-center gap-2">
