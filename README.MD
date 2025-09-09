@@ -2,7 +2,7 @@
 
 This repo has scripts and workflows to extract, transform and load methane super-emitter detections via satellite from multiple providers (SRON, Kayrros, Carbon Mapper). Outputs include cleaned datasets, cluster analysis, PNG outputs and a webmap built on Next.js + Maplibre hosted on Vercel.
 
-The final webmap output can be found [here] (https://ccca-data-analyst-tech.vercel.app/#2.91/-24.59/129.02)
+The final webmap output can be found here: (https://ccca-data-analyst-tech.vercel.app/#2.91/-24.59/129.02)
 
 The current configuration uses a manual download form Kayrros though this could be adapted to use an API call instead.
 It downloads the Carbon Mapper output from their API (key required) and accesses the SRON data via their FTP site.
