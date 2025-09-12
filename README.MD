@@ -129,36 +129,15 @@ Visit [http://localhost:3000](http://localhost:3000) to view the interactive map
 
 ```mermaid
 graph TD
-subgraph Extract
-A1[SRON (FTP CSV)]
-A2[Kayrros (CSV)]
-A3[Carbon Mapper (API JSONL)]
-end
+  A1[SRON (FTP CSV)] --> B[Ingestion]
+  A2[Kayrros (CSV/API)] --> B
+  A3[Carbon Mapper (API/JSONL)] --> B
 
-    subgraph Transform
-        B1[Clean & Validate<br/>CRS=4326, UTC times, QA]
-        B2[Unify Schema<br/>standard fields: plume_id_src, provider, lon/lat, emission_tph...]
-        B3[Merge Carbon Mapper<br/>+ filter CH₄ only]
-        B4[Deduplicate<br/>±30min / ≤5km, cross-provider merge]
-        B5[Clustering<br/>DBSCAN eps=30km, min_samples=5]
-    end
+  B --> C[Cleaning & Validation]
+  C --> D[Unification<br/>(merge to unified_plus_cm)]
+  D --> E[Deduplication<br/>(cross-provider 5km/30min)]
+  E --> F[Clustering<br/>(DBSCAN, polygons)]
 
-    subgraph Load
-        C1[Processed parquet/gpkg]
-        C2[PNG maps<br/>plot_au_dark.py]
-        C3[GeoJSON<br/>export_geojson.py]
-        C4[Interactive webmap<br/>Next.js + MapLibre]
-    end
-
-    A1 --> B1
-    A2 --> B1
-    A3 --> B1
-    B1 --> B2
-    B2 --> B3
-    B3 --> B4
-    B4 --> B5
-    B5 --> C1
-    C1 --> C2
-    C1 --> C3
-    C3 --> C4
+  F --> G1[Visualization: PNG maps]
+  F --> G2[Visualization: Webmap (Next.js + MapLibre)]
 ```
