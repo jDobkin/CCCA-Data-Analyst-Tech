@@ -127,6 +127,7 @@ Visit [http://localhost:3000](http://localhost:3000) to view the interactive map
 
 ### ETL Pipeline Flow Chart
 
+```mermaid
 flowchart TD
 subgraph Extract
 A1[SRON (FTP CSV)]
@@ -160,3 +161,4 @@ end
     C1 --> C2
     C1 --> C3
     C3 --> C4
+```
